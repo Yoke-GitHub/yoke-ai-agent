@@ -1,0 +1,16 @@
+package com.yoke.yokeaiagent.common;
+
+import java.io.Serializable;
+
+/**
+ * 通用的删除请求类
+ */
+public class DeleteRequest implements Serializable {
+    /**
+     * id
+     */
+    private long id;
+
+    private static final long serialVersionUID = 1L;
+
+}
