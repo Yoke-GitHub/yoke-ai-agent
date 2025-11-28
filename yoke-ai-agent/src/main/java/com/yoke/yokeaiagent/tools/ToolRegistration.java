@@ -23,6 +23,7 @@ public class ToolRegistration {
         ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool();
         TerminalOperationTool terminalOperationTool = new TerminalOperationTool();
         PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
+<<<<<<< HEAD
         TerminateTool terminateTool = new TerminateTool();
         return ToolCallbacks.from(
                 fileOperationTool,
@@ -32,6 +33,15 @@ public class ToolRegistration {
                 terminalOperationTool,
                 pdfGenerationTool,
                 terminateTool
+=======
+        return ToolCallbacks.from(
+            fileOperationTool,
+            webSearchTool,
+            webScrapingTool,
+            resourceDownloadTool,
+            terminalOperationTool,
+            pdfGenerationTool
+>>>>>>> c6443dc48ef02e66e5828addeeadf52044a1813a
         );
     }
 }
