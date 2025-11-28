@@ -19,14 +19,9 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 
 import org.springframework.stereotype.Component;
-<<<<<<< HEAD
 import reactor.core.publisher.Flux;
-=======
->>>>>>> c6443dc48ef02e66e5828addeeadf52044a1813a
 
-import java.io.File;
 import java.util.List;
-import java.util.function.Consumer;
 
 import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_CONVERSATION_ID_KEY;
 import static org.springframework.ai.chat.client.advisor.AbstractChatMemoryAdvisor.CHAT_MEMORY_RETRIEVE_SIZE_KEY;
@@ -59,12 +54,9 @@ public class LoveApp {
     @Resource
     private ToolCallback[] allTools;
 
-<<<<<<< HEAD
     @Resource
     private ToolCallbackProvider toolCallbackProvider;
 
-=======
->>>>>>> c6443dc48ef02e66e5828addeeadf52044a1813a
     private static final String SYSTEM_PROMPT = "扮演深耕恋爱心理领域的专家。开场向用户表明身份，告知用户可倾诉恋爱难题。" +
             "围绕单身、恋爱、已婚三种状态提问：单身状态询问社交圈拓展及追求心仪对象的困扰；" +
             "恋爱状态询问沟通、习惯差异引发的矛盾；已婚状态询问家庭责任与亲属关系处理的问题。" +
@@ -108,7 +100,6 @@ public class LoveApp {
         log.info("content: {}", content);
         return content;
     }
-<<<<<<< HEAD
     /**
      * AI 基础对话（支持多轮对话记忆，SSE 流式传输）
      *
@@ -125,8 +116,6 @@ public class LoveApp {
                 .stream()
                 .content();
     }
-=======
->>>>>>> c6443dc48ef02e66e5828addeeadf52044a1813a
 
     record LoveReport(String title, List<String> suggestion) {
 
@@ -215,12 +204,7 @@ public class LoveApp {
      * @param chatId
      * @return
      */
-<<<<<<< HEAD
-=======
-    @Resource
-    private ToolCallbackProvider toolCallbackProvider;
 
->>>>>>> c6443dc48ef02e66e5828addeeadf52044a1813a
     public String doChatWithMcp(String message, String chatId) {
         ChatResponse response = chatClient
                 .prompt()
