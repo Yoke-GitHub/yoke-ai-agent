@@ -77,17 +77,18 @@ public class AiController {
      * @return
      */
     @GetMapping(value = "/love_app/chat/sse_emitter")
-    public SseEmitter doChatWithLoveAppSseEmitter(String message, String chatId) {
+    public SseEmitter doChatWithLoveAppServerSseEmitter(String message, String chatId) {
         // 创建一个超时时间较长的 SseEmitter
-        SseEmitter sseEmitter = new SseEmitter(180000L);
-        // 获取 Flux 响应式数据并且直接通过订阅推送给 SseEmitter
-        loveApp.doChatByStream(message, chatId).subscribe(chunk -> {
-            try {
-                sseEmitter.send(chunk);
-            } catch (IOException e) {
-                sseEmitter.completeWithError(e);
-            }
-        }, sseEmitter::completeWithError, sseEmitter::complete);
+        SseEmitter sseEmitter = new SseEmitter(180000L); // 3 分钟超时
+        // 获取 Flux 响应式数据流并且直接通过订阅推送给 SseEmitter
+        loveApp.doChatByStream(message, chatId)
+                .subscribe(chunk -> {
+                    try {
+                        sseEmitter.send(chunk);
+                    } catch (IOException e) {
+                        sseEmitter.completeWithError(e);
+                    }
+                }, sseEmitter::completeWithError, sseEmitter::complete);
         // 返回
         return sseEmitter;
     }
