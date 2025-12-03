@@ -4,6 +4,7 @@ import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import reactor.core.publisher.Flux;
 
 import java.util.UUID;
 
@@ -93,6 +94,14 @@ class LoveAppTest {
         // 测试图片搜索 MCP
         String message = "帮我搜索一些哄女朋友浪漫开心的图片";
         String answer = loveApp.doChatWithMcp(message, chatId);
+        Assertions.assertNotNull(answer);
+    }
+
+    @Test
+    void doChatBySteam() {
+        String chatId = UUID.randomUUID().toString();
+        String message = "我失恋了";
+        Flux<String> answer = loveApp.doChatByStream(message, chatId);
         Assertions.assertNotNull(answer);
     }
 }
