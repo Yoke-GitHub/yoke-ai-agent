@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
@@ -95,11 +96,12 @@ public class AiController {
 
     /**
      * 流式调用 yokeManus 应用
+     *
      * @param message
      * @return
      */
     @GetMapping("/manus/chat")
-    public SseEmitter doChatWithYokeManus(String message){
+    public SseEmitter doChatWithYokeManus(String message) {
         YokeManus yokeManus = new YokeManus(allTools, dashscopeChatModel);
         return yokeManus.runStream(message);
     }

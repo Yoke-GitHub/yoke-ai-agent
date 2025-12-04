@@ -35,36 +35,36 @@ export function createSSEConnection(url, params, onMessage, onError, onComplete)
       1: 'OPEN',
       2: 'CLOSED'
     }[readyState])
-    
+
     // EventSource的readyState:
     // 0 = CONNECTING (连接中或重连中)
     // 1 = OPEN (已连接)
     // 2 = CLOSED (已关闭)
-    
-    if (readyState === EventSource.CLOSED) {
-      // 连接已关闭 - 可能是正常关闭，也可能是错误关闭
-      if (!isCompleted) {
-        isCompleted = true
-        console.log('SSE连接已关闭')
-        // 延迟一点判断是正常关闭还是错误关闭
-        setTimeout(() => {
-          if (onComplete) {
-            onComplete()
-          }
-        }, 100)
-      }
-    } else if (readyState === EventSource.CONNECTING) {
-      // 连接失败或正在重连
-      // 注意：EventSource会自动重连，所以这里可能是重连中
-      // 只有在持续失败时才触发错误
-      console.warn('SSE连接失败或正在重连, readyState:', readyState)
-      // 不立即触发错误，等待重连结果
-    } else {
-      // 其他错误状态
+
+    // 这里统一把 onerror 当作一次「失败结束」：
+    // - 防止浏览器默认的无限自动重连把 Network 面板刷满
+    // - 把控制权交还给上层（比如 LoveApp.vue 里会走 fetch 兜底逻辑）
+    if (!isCompleted) {
+      isCompleted = true
       console.error('SSE连接错误:', error, 'readyState:', readyState)
-      if (!isCompleted && onError) {
-        isCompleted = true
-        onError(new Error(`SSE连接错误，状态码: ${readyState}`))
+
+      // 主动关闭当前连接，阻止继续自动重连
+      try {
+        eventSource.close()
+      } catch (e) {
+        console.warn('关闭EventSource时出错:', e)
+      }
+
+      if (onError) {
+        // 尽量构造一个可读性更好的错误对象
+        let err
+        if (error instanceof Error) {
+          err = error
+        } else {
+          // 这里无法拿到具体的 HTTP 状态码，只能给出通用描述
+          err = new Error('SSE连接失败，请检查后端 8123 端口或 /api/ai/love_app/chat/sse 是否已启动')
+        }
+        onError(err)
       }
     }
   }

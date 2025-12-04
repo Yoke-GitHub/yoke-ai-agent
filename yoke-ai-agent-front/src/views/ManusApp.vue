@@ -139,16 +139,30 @@ const sendMessage = async () => {
 
     eventSource.onerror = (error) => {
       console.log('SSE onerror触发, readyState:', eventSource.readyState)
+
+      // 如果已经收到过 AI 返回内容（aiMessageIndex !== -1），
+      // 那么大概率是任务完成或正常结束后的连接关闭，不再显示“连接失败”的错误。
+      if (aiMessageIndex !== -1) {
+        console.log('SSE连接结束（任务已产生输出，视为正常结束）')
+        isLoading.value = false
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
+        }
+        return
+      }
+
       if (eventSource.readyState === EventSource.CLOSED) {
         console.log('SSE连接正常关闭')
         isLoading.value = false
         eventSource = null
       } else if (eventSource.readyState === EventSource.CONNECTING) {
+        // 只有在“尚未收到任何任务输出”的情况下，才认为是真正的连接失败
         console.error('SSE连接失败:', error)
         isLoading.value = false
         messages.value.push({
           type: 'ai',
-          content: '连接失败，正在尝试重连或请稍后再试。',
+          content: '连接失败，请稍后再试。',
           time: getCurrentTime()
         })
         scrollToBottom()
