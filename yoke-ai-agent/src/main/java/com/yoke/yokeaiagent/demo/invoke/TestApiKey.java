@@ -9,5 +9,5 @@ package com.yoke.yokeaiagent.demo.invoke;
  */
 public interface TestApiKey {
 
-    String API_KEY = "sk-b3c303a6de554aa2b5289d9b25867263";
+    String API_KEY = "替换成自己的api key";
 }
