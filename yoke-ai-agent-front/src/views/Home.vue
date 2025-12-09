@@ -1,51 +1,32 @@
 <template>
-<section class="home">
-  <div class="home__halo home__halo--pink"></div>
-  <div class="home__halo home__halo--blue"></div>
-  <div class="home__content">
-      <header class="home__hero">
-        <p class="home__badge">Yoke AI Suite</p>
-        <h1>一站式智能体中心</h1>
-        <p class="home__sub">
-          精选垂直智能体，覆盖情感陪伴与超级效率两大场景，随时切换，多端自适应。
-        </p>
-      </header>
-
-      <div class="home__cards">
-        <article class="app-card love" @click="goToLoveApp">
-          <div class="app-card__head">
-            <div class="app-card__icon">💕</div>
-            <span class="app-card__tag">情感陪伴</span>
-          </div>
-          <h3>AI 恋爱大师</h3>
-          <p>12 年情感咨询经验的虚拟导师，洞悉恋爱心理，随时提供暖心建议。</p>
-          <ul>
-            <li>即时情绪疏导</li>
-            <li>恋爱关系诊断</li>
-            <li>亲密沟通建议</li>
-          </ul>
-        </article>
-
-        <article class="app-card manus" @click="goToManusApp">
-          <div class="app-card__head">
-            <div class="app-card__icon">🤖</div>
-            <span class="app-card__tag">效率助手</span>
-          </div>
-          <h3>AI 超级智能体</h3>
-          <p>多工具协同的执行专家，处理复杂链式任务，分步骤输出可追踪结果。</p>
-          <ul>
-            <li>长流程任务拆解</li>
-            <li>实时进度播报</li>
-            <li>工具链自动编排</li>
-          </ul>
-        </article>
+  <div class="home">
+    <div class="home-content">
+      <div class="header">
+        <h1>AI Agent 应用中心</h1>
+        <p class="subtitle">选择您想要使用的AI应用</p>
+      </div>
+      <div class="app-list">
+        <div class="app-card" @click="goToLoveApp">
+          <div class="app-icon">💕</div>
+          <h2>AI 恋爱大师</h2>
+          <p>专业的恋爱咨询助手，为您提供情感建议</p>
+          <div class="app-footer">点击进入 →</div>
+        </div>
+        <div class="app-card" @click="goToManusApp">
+          <div class="app-icon">🤖</div>
+          <h2>AI 超级智能体</h2>
+          <p>强大的智能助手，帮您解决各种问题</p>
+          <div class="app-footer">点击进入 →</div>
+        </div>
       </div>
     </div>
-  </section>
+    <Footer />
+  </div>
 </template>
 
 <script setup>
 import { useRouter } from 'vue-router'
+import Footer from '../components/Footer.vue'
 
 const router = useRouter()
 
@@ -60,212 +41,309 @@ const goToManusApp = () => {
 
 <style scoped>
 .home {
-  position: relative;
+  width: 100%;
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: clamp(2rem, 4vw, 4rem);
-  overflow: hidden;
-}
-
-.home__halo {
-  position: absolute;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  filter: blur(50px);
-  opacity: 0.5;
-  z-index: 0;
-}
-
-.home__halo--pink {
-  background: rgba(255, 163, 221, 0.8);
-  top: -80px;
-  left: -120px;
-}
-
-.home__halo--blue {
-  background: rgba(166, 196, 255, 0.85);
-  bottom: -100px;
-  right: -140px;
-}
-
-.home__content {
-  position: relative;
-  z-index: 1;
-  width: min(1200px, 100%);
+  background: var(--gradient-primary);
   display: flex;
   flex-direction: column;
-  gap: 3rem;
-  padding: 2rem;
-  border-radius: 36px;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 25px 80px rgba(54, 26, 73, 0.18);
+  position: relative;
+  overflow-x: hidden;
 }
 
-.home__hero {
-  text-align: center;
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-.home__badge {
-  display: inline-flex;
+.home-content {
+  flex: 1;
+  width: 100%;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 1rem;
-  border-radius: 999px;
-  font-size: 0.9rem;
-  letter-spacing: 0.06em;
-  background: rgba(255, 189, 222, 0.5);
-  color: #ff4f9d;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 132, 194, 0.4);
+  position: relative;
 }
 
-.home__hero h1 {
-  font-size: clamp(2.2rem, 4.5vw, 3.65rem);
-  margin-bottom: 1rem;
-  text-shadow: 0 6px 18px rgba(255, 159, 215, 0.35);
+/* 背景装饰 */
+.home::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: float 20s infinite linear;
+  pointer-events: none;
 }
 
-.home__sub {
-  color: var(--text-secondary);
-  line-height: 1.9;
+@keyframes float {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(50px, 50px);
+  }
 }
 
-.home__cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: clamp(1.5rem, 2vw, 2.5rem);
+.header {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 60px;
+  position: relative;
+  z-index: 1;
+  text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.header h1 {
+  font-size: 48px;
+  font-weight: 700;
+  margin-bottom: 15px;
+  background: linear-gradient(135deg, #fff 0%, #ffeef8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 2px;
+  animation: slideInDown 0.6s ease-out;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.subtitle {
+  font-size: 20px;
+  opacity: 0.95;
+  font-weight: 300;
+  animation: fadeIn 0.8s ease-out 0.2s backwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+
+.app-list {
+  display: flex;
+  gap: 30px;
+  max-width: 1200px;
+  width: 100%;
+  justify-content: center;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
 }
 
 .app-card {
-  position: relative;
-  overflow: hidden;
-  background: var(--card-bg);
-  border-radius: 32px;
-  padding: 2.2rem;
-  border: 1px solid var(--border-light);
-  box-shadow: 0 25px 60px rgba(117, 73, 148, 0.18);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-large);
+  padding: 40px 35px;
+  width: 400px;
+  box-shadow: var(--shadow-strong);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   display: flex;
   flex-direction: column;
-  gap: 1.3rem;
-  cursor: pointer;
+  align-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  position: relative;
+  overflow: hidden;
 }
 
-.app-card::after {
+.app-card::before {
   content: '';
   position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35), transparent 60%);
-  transition: opacity 0.3s ease;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transition: left 0.5s;
+}
+
+.app-card:hover::before {
+  left: 100%;
 }
 
 .app-card:hover {
-  transform: translateY(-10px) scale(1.01);
-  box-shadow: 0 35px 90px rgba(117, 73, 148, 0.25);
+  transform: translateY(-15px) scale(1.02);
+  box-shadow: 0 20px 60px rgba(255, 107, 157, 0.3);
+  border-color: rgba(255, 107, 157, 0.3);
 }
 
-.app-card:hover::after {
-  opacity: 1;
+.app-card:nth-child(1) {
+  animation: slideInLeft 0.6s ease-out 0.2s backwards;
 }
 
-.app-card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.app-card:nth-child(2) {
+  animation: slideInRight 0.6s ease-out 0.4s backwards;
 }
 
-.app-card__icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 22px;
-  display: grid;
-  place-items: center;
-  font-size: 2.15rem;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 10px 25px rgba(255, 255, 255, 0.5);
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.app-card__tag {
-  padding: 0.4rem 1.1rem;
-  border-radius: 999px;
-  font-size: 0.9rem;
-  background: rgba(255, 255, 255, 0.6);
-  color: var(--text-secondary);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.app-card h3 {
-  font-size: 1.7rem;
+.app-icon {
+  font-size: 80px;
+  margin-bottom: 25px;
+  filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.1));
+  transition: transform 0.3s;
+  display: inline-block;
+}
+
+.app-card:hover .app-icon {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.app-card h2 {
+  font-size: 28px;
+  color: #333;
+  margin-bottom: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
 }
 
 .app-card p {
-  color: var(--text-secondary);
-  line-height: 1.75;
+  font-size: 16px;
+  color: #666;
+  text-align: center;
+  line-height: 1.8;
+  margin-bottom: 25px;
+  flex-grow: 1;
 }
 
-.app-card ul {
-  list-style: none;
+.app-footer {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 16px;
+  margin-top: 10px;
   display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  color: var(--text-secondary);
-  font-size: 1rem;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.3s;
 }
 
-.app-card ul li {
-  position: relative;
-  padding-left: 1.6rem;
+.app-card:hover .app-footer {
+  transform: translateX(5px);
 }
 
-.app-card ul li::before {
-  content: '✦';
-  position: absolute;
-  left: 0;
-  color: #ff87c5;
-  font-size: 0.95rem;
-}
-
-.app-card.love {
-  background: linear-gradient(160deg, rgba(255, 209, 233, 0.95), rgba(255, 255, 255, 0.9));
-}
-
-.app-card.manus {
-  background: linear-gradient(160deg, rgba(215, 227, 255, 0.95), rgba(255, 255, 255, 0.9));
-}
-
-@media (max-width: 768px) {
-  .home__content {
-    gap: 2rem;
-    padding: 1.5rem;
+/* 平板适配 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .app-list {
+    max-width: 900px;
   }
-
+  
   .app-card {
-    padding: 1.8rem;
+    width: calc(50% - 15px);
+    max-width: none;
+  }
+  
+  .header h1 {
+    font-size: 42px;
   }
 }
 
-@media (max-width: 576px) {
+/* 手机适配 */
+@media (max-width: 768px) {
   .home {
-    padding: 1.5rem 1rem 3rem;
+    padding: 30px 15px;
   }
-
-  .app-card__head {
+  
+  .header {
+    margin-bottom: 40px;
+  }
+  
+  .header h1 {
+    font-size: 32px;
+    letter-spacing: 1px;
+  }
+  
+  .subtitle {
+    font-size: 16px;
+  }
+  
+  .app-list {
     flex-direction: column;
-    gap: 0.75rem;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: 20px;
   }
+  
+  .app-card {
+    width: 100%;
+    max-width: none;
+    padding: 30px 25px;
+  }
+  
+  .app-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+  }
+  
+  .app-card h2 {
+    font-size: 24px;
+  }
+  
+  .app-card p {
+    font-size: 15px;
+  }
+}
 
-  .home__hero h1 {
-    font-size: 2.2rem;
+/* 小屏手机 */
+@media (max-width: 480px) {
+  .home {
+    padding: 20px 10px;
+  }
+  
+  .header h1 {
+    font-size: 28px;
+  }
+  
+  .subtitle {
+    font-size: 14px;
+  }
+  
+  .app-card {
+    padding: 25px 20px;
+    border-radius: var(--radius-medium);
+  }
+  
+  .app-icon {
+    font-size: 56px;
+  }
+  
+  .app-card h2 {
+    font-size: 20px;
+  }
+  
+  .app-card p {
+    font-size: 14px;
   }
 }
 </style>

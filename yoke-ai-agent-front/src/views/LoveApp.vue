@@ -1,90 +1,88 @@
 <template>
-  <section class="chat-view">
-    <header class="chat-view__header">
-      <div class="chat-view__title">
-        <button class="back-btn" @click="goBack">← 返回</button>
-        <div>
-          <p class="chat-view__label">恋爱场景智能体</p>
-          <h2>AI 恋爱大师</h2>
-        </div>
-      </div>
-      <div class="chat-view__meta">
-        <div class="ai-profile">
-          <div class="ai-profile__avatar">💗</div>
-          <div>
-            <p class="ai-profile__name">林深 · 情感陪伴</p>
-            <small>会话 ID：{{ chatId }}</small>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <div class="chat-panel">
-      <div class="chat-messages" ref="messagesContainer">
-        <div
-          v-for="(message, index) in messages"
-          :key="index"
-          :class="['message-row', message.type]"
-        >
-          <div
-            class="avatar"
-            :class="message.type === 'ai' ? 'avatar--ai-love' : 'avatar--user'"
-          >
-            <span>{{ message.type === 'ai' ? 'AI' : '我' }}</span>
+  <div class="chat-container">
+    <div class="chat-header">
+      <button class="back-btn" @click="goHome">← 返回</button>
+      <h2>AI 恋爱大师</h2>
+      <div class="chat-id">会话ID: {{ chatId }}</div>
+    </div>
+    <div class="chat-messages" ref="messagesContainer">
+      <div 
+        v-for="(msg, index) in messages" 
+        :key="index"
+        :class="['message', msg.type]"
+      >
+        <div class="message-content">
+          <div :class="['message-avatar', msg.type]">
+            <span v-if="msg.type === 'user'">👤</span>
+            <div v-else class="ai-avatar-love">💕</div>
           </div>
           <div class="message-bubble">
-            <div class="message-text">{{ message.content }}</div>
-            <div class="message-time">{{ message.time }}</div>
-          </div>
-        </div>
-
-        <div v-if="isLoading" class="message-row ai typing-row">
-          <div class="avatar avatar--ai-love">
-            <span>AI</span>
-          </div>
-          <div class="message-bubble">
-            <div class="message-text typing">AI 正在思考中</div>
+            <div class="message-text" v-html="formatMessage(msg.content)"></div>
+            <div class="message-time">{{ msg.time }}</div>
           </div>
         </div>
       </div>
-
-      <div class="chat-input">
+      <div v-if="isLoading" class="message ai">
+        <div class="message-content">
+          <div class="message-avatar ai">
+            <div class="ai-avatar-love">💕</div>
+          </div>
+          <div class="message-bubble">
+            <div class="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-container">
+      <div class="input-wrapper">
         <textarea
           v-model="inputMessage"
-          @keyup.enter.exact.prevent="sendMessage"
-          placeholder="输入您的情感问题，Enter 发送"
-          rows="2"
-          :disabled="isLoading"
-        />
-        <button
-          class="send-btn"
-          @click="sendMessage"
+          @keydown.enter.exact.prevent="sendMessage"
+          @keydown.shift.enter.exact="inputMessage += '\n'"
+          placeholder="输入您的消息..."
+          class="chat-input"
+          rows="1"
+          ref="inputRef"
+        ></textarea>
+        <button 
+          @click="sendMessage" 
           :disabled="!inputMessage.trim() || isLoading"
+          class="send-btn"
         >
           发送
         </button>
       </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { createSSEConnection } from '../utils/sse'
-import { createSSEConnectionWithFetch } from '../utils/sse-fetch'
+import { chatWithLoveAppSse } from '../api/chat'
 
 const router = useRouter()
 const messages = ref([])
 const inputMessage = ref('')
 const isLoading = ref(false)
-const messagesContainer = ref(null)
 const chatId = ref('')
-let sseConnection = null
+const messagesContainer = ref(null)
+const inputRef = ref(null)
+let eventSource = null
+let isStreamCompleted = false // 标记流是否已完成，防止重复处理
 
 // 生成聊天室ID
 const generateChatId = () => {
-  return 'chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 11)
+  return 'love_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+}
+
+// 格式化消息（支持换行）
+const formatMessage = (text) => {
+  return text.replace(/\n/g, '<br>')
 }
 
 // 获取当前时间
@@ -103,437 +101,264 @@ const scrollToBottom = () => {
 }
 
 // 发送消息
-const sendMessage = () => {
-  if (!inputMessage.value.trim() || isLoading.value) return
+const sendMessage = async () => {
+  const message = inputMessage.value.trim()
+  if (!message || isLoading.value) return
 
-  const userMessage = {
+  // 添加用户消息
+  messages.value.push({
     type: 'user',
-    content: inputMessage.value,
+    content: message,
     time: getCurrentTime()
-  }
-  messages.value.push(userMessage)
-  const messageToSend = inputMessage.value
+  })
+
   inputMessage.value = ''
+  isLoading.value = true
+  isStreamCompleted = false // 重置完成标记
   scrollToBottom()
 
-  // 创建SSE连接
-  isLoading.value = true
-  let aiMessageContent = ''
-  let aiMessageIndex = -1
+  // 初始化AI消息
+  let aiMessageIndex = messages.value.length
+  messages.value.push({
+    type: 'ai',
+    content: '',
+    time: getCurrentTime()
+  })
 
-  // 如果已存在连接，先关闭
-  if (sseConnection) {
-    sseConnection.close()
-  }
-
-  // 先尝试使用EventSource，如果失败则使用fetch
   try {
-    sseConnection = createSSEConnection(
-      'http://localhost:8123/api/ai/love_app/chat/sse',
-      {
-        message: messageToSend,
-        chatId: chatId.value
-      },
-      (data) => {
-        if (aiMessageIndex === -1) {
-          aiMessageContent = data
-          aiMessageIndex = messages.value.length
-          messages.value.push({
-            type: 'ai',
-            content: aiMessageContent,
-            time: getCurrentTime()
-          })
-        } else {
-          aiMessageContent += data
-          messages.value[aiMessageIndex].content = aiMessageContent
-        }
-        scrollToBottom()
-      },
-      (error) => {
-        console.error('EventSource SSE错误，尝试使用fetch:', error)
-        // EventSource失败，尝试使用fetch
-        if (sseConnection) {
-          sseConnection.close()
-        }
-        // 使用fetch方式重试
-        sseConnection = createSSEConnectionWithFetch(
-          'http://localhost:8123/api/ai/love_app/chat/sse',
-          {
-            message: messageToSend,
-            chatId: chatId.value
-          },
-          (data) => {
-            if (aiMessageIndex === -1) {
-              aiMessageContent = data
-              aiMessageIndex = messages.value.length
-              messages.value.push({
-                type: 'ai',
-                content: aiMessageContent,
-                time: getCurrentTime()
-              })
-            } else {
-              aiMessageContent += data
-              messages.value[aiMessageIndex].content = aiMessageContent
-            }
-            scrollToBottom()
-          },
-          (error) => {
-            console.error('Fetch SSE错误:', error)
-            isLoading.value = false
-            messages.value.push({
-              type: 'ai',
-              content: `连接错误: ${error.message || '请检查后端服务是否正常运行'}`,
-              time: getCurrentTime()
-            })
-            scrollToBottom()
-            if (sseConnection) {
-              sseConnection.close()
-              sseConnection = null
-            }
-          },
-          () => {
-            isLoading.value = false
-            if (sseConnection) {
-              sseConnection.close()
-              sseConnection = null
-            }
-          }
-        )
-      },
-      () => {
-        // 连接正常完成
-        isLoading.value = false
-        if (sseConnection) {
-          sseConnection.close()
-          sseConnection = null
-        }
+    // 关闭之前的连接
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
+
+    // 创建SSE连接
+    eventSource = chatWithLoveAppSse(message, chatId.value)
+
+    // 监听连接打开
+    eventSource.onopen = () => {
+      console.log('SSE连接已建立')
+    }
+
+    eventSource.onmessage = (event) => {
+      // 检查是否已经完成，防止重复处理
+      if (isStreamCompleted) {
+        return
       }
-    )
-  } catch (error) {
-    console.error('创建SSE连接异常:', error)
-    // 直接使用fetch方式
-    sseConnection = createSSEConnectionWithFetch(
-      'http://localhost:8123/api/ai/love_app/chat/sse',
-      {
-        message: messageToSend,
-        chatId: chatId.value
-      },
-      (data) => {
-        if (aiMessageIndex === -1) {
-          aiMessageContent = data
-          aiMessageIndex = messages.value.length
-          messages.value.push({
-            type: 'ai',
-            content: aiMessageContent,
-            time: getCurrentTime()
-          })
-        } else {
-          aiMessageContent += data
-          messages.value[aiMessageIndex].content = aiMessageContent
-        }
-        scrollToBottom()
-      },
-      (error) => {
-        console.error('Fetch SSE错误:', error)
+
+      // 检查是否收到结束标记（空数据或特定标记）
+      if (!event.data || event.data.trim() === '' || event.data === '[DONE]') {
+        // 任务完成，立即关闭连接
+        isStreamCompleted = true
         isLoading.value = false
+        
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
+        }
+        
+        console.log('SSE流式消息接收完成（收到结束标记）')
+        return
+      }
+
+      if (messages.value[aiMessageIndex]) {
+        messages.value[aiMessageIndex].content += event.data
+      } else {
         messages.value.push({
           type: 'ai',
-          content: `连接错误: ${error.message || '请检查后端服务是否正常运行'}`,
+          content: event.data,
           time: getCurrentTime()
         })
-        scrollToBottom()
-        if (sseConnection) {
-          sseConnection.close()
-          sseConnection = null
+      }
+      scrollToBottom()
+    }
+
+    eventSource.onerror = (error) => {
+      // 如果已经完成，直接返回，防止重复处理
+      if (isStreamCompleted) {
+        return
+      }
+
+      // 检查连接状态
+      if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+        // 标记为已完成，防止自动重试
+        isStreamCompleted = true
+        
+        // 连接已关闭（可能是正常结束或错误）
+        const hasContent = messages.value[aiMessageIndex] && 
+                          messages.value[aiMessageIndex].content.trim().length > 0
+        
+        if (hasContent) {
+          // 有内容，说明是正常结束
+          console.log('SSE流式消息接收完成')
+        } else {
+          // 无内容，可能是错误
+          console.warn('SSE连接关闭，但没有接收到内容')
+          if (messages.value[aiMessageIndex]) {
+            messages.value[aiMessageIndex].content = '抱歉，未接收到响应，请稍后重试。'
+          }
         }
-      },
-      () => {
+        
+        // 清理状态
         isLoading.value = false
-        if (sseConnection) {
-          sseConnection.close()
-          sseConnection = null
+        
+        // 确保连接已关闭
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
+        }
+      } else if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+        // 如果正在重连，立即关闭，防止自动重试
+        console.log('检测到SSE自动重连，立即关闭连接')
+        isStreamCompleted = true
+        isLoading.value = false
+        
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
         }
       }
-    )
+    }
+
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    isStreamCompleted = true // 标记为已完成，防止重试
+    isLoading.value = false
+    if (messages.value[aiMessageIndex]) {
+      messages.value[aiMessageIndex].content = '发送消息失败，请稍后重试。'
+    }
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
   }
 }
 
 // 返回主页
-const goBack = () => {
-  if (sseConnection) {
-    sseConnection.close()
-    sseConnection = null
+const goHome = () => {
+  isStreamCompleted = true // 标记为已完成，防止重试
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
   }
+  isLoading.value = false
   router.push('/')
 }
 
 onMounted(() => {
   chatId.value = generateChatId()
+  // 自动聚焦输入框
+  if (inputRef.value) {
+    inputRef.value.focus()
+  }
 })
 
 onUnmounted(() => {
-  if (sseConnection) {
-    sseConnection.close()
-    sseConnection = null
+  isStreamCompleted = true // 标记为已完成，防止重试
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
   }
+  isLoading.value = false
 })
 </script>
 
 <style scoped>
-.chat-view {
-  min-height: 100vh;
+.chat-container {
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: clamp(1.5rem, 3vw, 2.5rem);
-  gap: 1.5rem;
+  background: var(--gradient-love);
   position: relative;
+  overflow: hidden;
 }
 
-.chat-view::before {
+.chat-container::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: url('https://assets.codepen.io/4927073/stars.svg') center/400px repeat;
-  opacity: 0.25;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255, 154, 158, 0.2) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(250, 208, 196, 0.2) 0%, transparent 50%);
   pointer-events: none;
+  z-index: 0;
 }
 
-.chat-view__header {
-  background: var(--card-bg);
-  border-radius: 28px;
-  padding: clamp(1rem, 2vw, 1.9rem);
+.chat-header {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+  color: white;
+  padding: 18px 25px;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 25px 60px rgba(255, 173, 211, 0.25);
-}
-
-.chat-view__title {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.chat-view__label {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.chat-view__title h2 {
-  margin-top: 0.35rem;
+  box-shadow: var(--shadow-medium);
+  position: relative;
+  z-index: 10;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .back-btn {
-  border: none;
-  background: rgba(255, 143, 188, 0.2);
-  color: #ff5f9d;
-  padding: 0.55rem 1rem;
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
   cursor: pointer;
-  font-size: 0.95rem;
-  box-shadow: inset 0 0 0 1px rgba(255, 95, 157, 0.2);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.chat-view__meta {
-  display: flex;
-  align-items: center;
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.4);
+  transform: translateX(-3px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
-.ai-profile {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.85rem 1.1rem;
-  border-radius: 18px;
-  background: rgba(255, 182, 218, 0.25);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+.chat-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  flex: 1;
+  text-align: center;
+  text-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
+  letter-spacing: 1px;
 }
 
-.ai-profile__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 1.7rem;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 15px 35px rgba(255, 157, 209, 0.45);
-}
-
-.ai-profile__name {
-  font-weight: 600;
-}
-
-.chat-panel {
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 36px;
-  padding: clamp(1rem, 2vw, 1.6rem);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 220px);
-  max-height: 920px;
-  min-height: 480px;
-  box-shadow: 0 45px 90px rgba(255, 173, 211, 0.3);
+.chat-id {
+  font-size: 11px;
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(5px);
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding-right: 0.5rem;
+  padding: 25px 20px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 20px;
+  position: relative;
+  z-index: 1;
 }
 
-.message-row {
+.message {
   display: flex;
-  gap: 0.85rem;
-  max-width: 85%;
-  animation: fadeIn 0.35s ease;
-}
-
-.message-row.user {
-  margin-left: auto;
-  flex-direction: row-reverse;
-}
-
-.avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #fff;
-  box-shadow: 0 15px 30px rgba(255, 149, 206, 0.4);
-}
-
-.avatar--ai-love {
-  background: var(--brand-gradient);
-}
-
-.avatar--user {
-  background: var(--brand-gradient-alt);
-}
-
-.message-bubble {
-  background: #ffffff;
-  border-radius: 20px;
-  padding: 1rem 1.15rem 0.7rem;
-  box-shadow: 0 15px 45px rgba(255, 173, 211, 0.25);
-  border: 1px solid rgba(255, 153, 204, 0.25);
   width: 100%;
-  position: relative;
+  animation: fadeInMessage 0.3s ease-out;
 }
 
-.message-row.user .message-bubble {
-  background: var(--brand-gradient-alt);
-  color: #fff;
-  border: none;
-  box-shadow: 0 18px 40px rgba(255, 153, 204, 0.35);
-}
-
-.message-text {
-  font-size: 1rem;
-  line-height: 1.8;
-  text-align: left;
-  white-space: pre-wrap;
-}
-
-.message-row.user .message-text {
-  text-align: right;
-}
-
-.message-time {
-  font-size: 0.75rem;
-  opacity: 0.65;
-  margin-top: 0.35rem;
-  text-align: right;
-}
-
-.message-row.ai .message-time {
-  text-align: left;
-}
-
-.typing-row .message-bubble {
-  background: rgba(255, 189, 222, 0.25);
-  border-style: dashed;
-}
-
-.typing {
-  position: relative;
-  padding-right: 1.6rem;
-}
-
-.typing::after {
-  content: '...';
-  position: absolute;
-  right: 0.2rem;
-  animation: dots 1.2s steps(4, end) infinite;
-  color: #ff73b3;
-}
-
-.chat-input {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-
-.chat-input textarea {
-  flex: 1;
-  resize: none;
-  border: 1px solid rgba(255, 151, 208, 0.4);
-  border-radius: 20px;
-  padding: 1.1rem 1.3rem;
-  font-size: 1rem;
-  line-height: 1.7;
-  min-height: 56px;
-  max-height: 180px;
-  box-shadow: inset 0 2px 10px rgba(255, 161, 209, 0.2);
-  background: rgba(255, 255, 255, 0.85);
-}
-
-.chat-input textarea:focus {
-  outline: 2px solid rgba(255, 151, 208, 0.6);
-}
-
-.chat-input textarea:disabled {
-  background: #f7f7fb;
-}
-
-.send-btn {
-  border: none;
-  border-radius: 18px;
-  padding: 1rem 2.1rem;
-  background: linear-gradient(135deg, #ff9fd7 0%, #ff73b3 100%);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 18px 35px rgba(255, 115, 179, 0.35);
-}
-
-.send-btn:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.01);
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-@keyframes fadeIn {
+@keyframes fadeInMessage {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -541,60 +366,351 @@ onUnmounted(() => {
   }
 }
 
-@keyframes dots {
-  0%, 20% {
-    content: '.';
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.ai {
+  justify-content: flex-start;
+}
+
+.message-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 75%;
+}
+
+.message.user .message-content {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-soft);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  transition: transform 0.3s;
+}
+
+.message-avatar:hover {
+  transform: scale(1.1);
+}
+
+.message-avatar.user {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+}
+
+.message-avatar.ai {
+  background: linear-gradient(135deg, #fad0c4 0%, #ffd1ff 100%);
+}
+
+.ai-avatar-love {
+  font-size: 28px;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.1));
+  animation: heartbeat 2s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% {
+    transform: scale(1);
   }
-  40% {
-    content: '..';
-  }
-  60%, 100% {
-    content: '...';
+  50% {
+    transform: scale(1.1);
   }
 }
 
-@media (max-width: 1024px) {
-  .chat-panel {
-    height: calc(100vh - 180px);
+.message-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-medium);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.message.user .message-bubble {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.message.ai .message-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+}
+
+.message-text {
+  word-wrap: break-word;
+  line-height: 1.7;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.message.user .message-text {
+  color: white;
+}
+
+.message-time {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 8px;
+  font-weight: 300;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 6px;
+  padding: 5px 0;
+  align-items: center;
+}
+
+.typing-indicator span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+  animation: typing 1.4s infinite;
+  box-shadow: 0 2px 5px rgba(255, 154, 158, 0.3);
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-12px) scale(1.1);
+    opacity: 1;
   }
 }
 
+.chat-input-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 18px 25px;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 10;
+}
+
+.input-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.chat-input {
+  flex: 1;
+  border: 2px solid rgba(255, 154, 158, 0.3);
+  border-radius: var(--radius-large);
+  padding: 14px 18px;
+  font-size: 15px;
+  resize: none;
+  max-height: 120px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.3s;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.chat-input:focus {
+  border-color: #ff9a9e;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(255, 154, 158, 0.1), inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.chat-input::placeholder {
+  color: #999;
+}
+
+.send-btn {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-large);
+  padding: 14px 35px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.send-btn:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+/* 平板适配 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .message-content {
+    max-width: 80%;
+  }
+  
+  .chat-header {
+    padding: 16px 22px;
+  }
+  
+  .chat-header h2 {
+    font-size: 20px;
+  }
+  
+  .chat-messages {
+    padding: 22px 18px;
+  }
+}
+
+/* 手机适配 */
 @media (max-width: 768px) {
-  .chat-view {
-    padding: 1rem;
+  .message-content {
+    max-width: 85%;
   }
-
-  .chat-view__header {
-    border-radius: 18px;
+  
+  .chat-header {
+    padding: 14px 18px;
   }
-
-  .chat-panel {
-    border-radius: 24px;
-    padding: 1rem;
+  
+  .chat-header h2 {
+    font-size: 18px;
   }
-
-  .message-row {
-    max-width: 100%;
+  
+  .chat-id {
+    display: none;
+  }
+  
+  .chat-messages {
+    padding: 20px 15px;
+    gap: 16px;
+  }
+  
+  .message-avatar {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+  
+  .ai-avatar-love {
+    font-size: 24px;
+  }
+  
+  .message-bubble {
+    padding: 12px 16px;
+  }
+  
+  .message-text {
+    font-size: 14px;
+  }
+  
+  .chat-input-container {
+    padding: 15px 18px;
+  }
+  
+  .chat-input {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  
+  .send-btn {
+    padding: 12px 25px;
+    font-size: 14px;
   }
 }
 
-@media (max-width: 520px) {
-  .chat-view__title {
-    flex-direction: column;
-    align-items: flex-start;
+/* 小屏手机 */
+@media (max-width: 480px) {
+  .chat-header {
+    padding: 12px 15px;
   }
-
-  .ai-profile {
-    width: 100%;
-    justify-content: flex-start;
+  
+  .chat-header h2 {
+    font-size: 16px;
   }
-
+  
+  .back-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  
+  .message-content {
+    max-width: 90%;
+  }
+  
+  .message-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+  
+  .ai-avatar-love {
+    font-size: 22px;
+  }
+  
+  .message-bubble {
+    padding: 10px 14px;
+    border-radius: var(--radius-small);
+  }
+  
+  .message-text {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  
+  .chat-messages {
+    padding: 15px 12px;
+    gap: 14px;
+  }
+  
+  .chat-input-container {
+    padding: 12px 15px;
+  }
+  
+  .input-wrapper {
+    gap: 10px;
+  }
+  
   .chat-input {
-    flex-direction: column;
+    padding: 10px 14px;
+    font-size: 13px;
   }
-
+  
   .send-btn {
-    width: 100%;
+    padding: 10px 20px;
+    font-size: 13px;
   }
 }
 </style>

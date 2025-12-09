@@ -1,41 +1,14 @@
 <template>
-  <div class="app-shell">
-    <main class="app-main">
-      <router-view />
-    </main>
-    <footer class="app-footer">
-      <div class="footer-links">
-        <a href="https://www.baidu.com/" target="_blank" rel="noopener noreferrer">关于我们</a>
-        <span>|</span>
-        <a href="https://www.baidu.com/" target="_blank" rel="noopener noreferrer">联系我们</a>
-        <span>|</span>
-        <a href="https://www.baidu.com/" target="_blank" rel="noopener noreferrer">隐私政策</a>
-      </div>
-      <p>© {{ currentYear }} Yoke AI Agent · All Rights Reserved</p>
-      <p>京公网安备 11000002000001 号 · 京ICP证030173号</p>
-    </footer>
+  <div id="app">
+    <router-view />
   </div>
 </template>
 
 <script setup>
-const currentYear = new Date().getFullYear()
 </script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
-
-:root {
-  --brand-gradient: linear-gradient(135deg, #8f8bff 0%, #ff9fd7 100%);
-  --brand-gradient-alt: linear-gradient(135deg, #ffc778 0%, #ff92c2 100%);
-  --bg-soft: #f7f1ff;
-  --bg-soft-alt: #fef5ff;
-  --border-light: rgba(203, 187, 255, 0.5);
-  --text-primary: #402147;
-  --text-secondary: #7a5f87;
-  --card-bg: rgba(255, 255, 255, 0.96);
-  --glow-1: rgba(143, 139, 255, 0.35);
-  --glow-2: rgba(255, 159, 215, 0.35);
-}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
 
 * {
   margin: 0;
@@ -43,83 +16,73 @@ const currentYear = new Date().getFullYear()
   box-sizing: border-box;
 }
 
-body {
-  font-family: 'Baloo 2', 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg-soft);
-  color: var(--text-primary);
-  min-height: 100vh;
-  background-image: radial-gradient(circle at 10% 20%, rgba(255, 212, 236, 0.8) 0, transparent 35%),
-    radial-gradient(circle at 70% 0%, rgba(183, 210, 255, 0.9) 0, transparent 42%),
-    radial-gradient(circle at 20% 80%, rgba(255, 236, 185, 0.8) 0, transparent 40%);
+:root {
+  /* 动漫风格配色 */
+  --color-primary: #ff6b9d;
+  --color-secondary: #c084fc;
+  --color-accent: #a78bfa;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  
+  /* 背景渐变 */
+  --gradient-primary: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #fecfef 100%);
+  --gradient-secondary: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+  --gradient-love: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+  --gradient-manus: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  
+  /* 阴影 */
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-medium: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-strong: 0 15px 50px rgba(0, 0, 0, 0.2);
+  
+  /* 圆角 */
+  --radius-small: 12px;
+  --radius-medium: 20px;
+  --radius-large: 30px;
+  --radius-full: 999px;
 }
 
 #app {
-  min-height: 100vh;
-}
-
-.app-shell {
-  min-height: 100vh;
-  position: relative;
+  width: 100%;
+  height: 100vh;
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
-.app-main {
-  flex: 1;
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--gradient-primary);
 }
 
-.app-shell::before,
-.app-shell::after {
-  content: '';
-  position: absolute;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  background: var(--glow-1);
-  filter: blur(60px);
-  z-index: -1;
-  opacity: 0.6;
+/* 滚动条样式（动漫风格） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.app-shell::after {
-  background: var(--glow-2);
-  bottom: -120px;
-  right: -80px;
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
 }
 
-.app-shell::before {
-  top: -140px;
-  left: -80px;
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 107, 157, 0.5);
+  border-radius: 10px;
+  transition: background 0.3s;
 }
 
-.app-footer {
-  text-align: center;
-  padding: 1.5rem 1rem 2rem;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  color: var(--text-secondary);
-  font-size: 0.92rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 -10px 30px rgba(64, 33, 71, 0.08);
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 157, 0.7);
 }
 
-.footer-links {
-  display: flex;
-  justify-content: center;
-  gap: 0.6rem;
-  margin-bottom: 0.35rem;
-  flex-wrap: wrap;
-}
-
-.footer-links a {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.footer-links span {
-  color: rgba(90, 70, 98, 0.4);
+/* 选择文本颜色 */
+::selection {
+  background: rgba(255, 107, 157, 0.3);
+  color: #fff;
 }
 </style>
 

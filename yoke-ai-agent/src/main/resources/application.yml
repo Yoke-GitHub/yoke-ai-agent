@@ -15,14 +15,14 @@ spring:
         initialize-schema: true
 
     # MCP 客户端配置
-    mcp:
-      client:
-#        sse:
-#          connection:
-#            server1:
-#              url: http://localhost:8127
-        stdio:
-          servers-configuration: classpath:mcp-servers.json
+#    mcp:
+#      client:
+##        sse:
+##          connection:
+##            server1:
+##              url: http://localhost:8127
+#        stdio:
+#          servers-configuration: classpath:mcp-servers.json
 
     # ollama 配置
     ollama:

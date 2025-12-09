@@ -1,83 +1,91 @@
 <template>
-  <section class="chat-view">
-    <header class="chat-view__header">
-      <div class="chat-view__title">
-        <button class="back-btn" @click="goBack">← 返回</button>
-        <div>
-          <p class="chat-view__label">多工具执行体</p>
-          <h2>AI 超级智能体</h2>
-        </div>
-      </div>
-      <div class="chat-view__meta">
-        <div class="ai-profile ai-profile--manus">
-          <div class="ai-profile__avatar">🤖</div>
-          <div>
-            <p class="ai-profile__name">Manus · Workflow</p>
-            <small>逐步执行，每一步均有播报</small>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <div class="chat-panel">
-      <div class="chat-messages" ref="messagesContainer">
-        <div
-          v-for="(message, index) in messages"
-          :key="index"
-          :class="['message-row', message.type]"
-        >
-          <div
-            class="avatar"
-            :class="message.type === 'ai' ? 'avatar--ai-manus' : 'avatar--user'"
-          >
-            <span>{{ message.type === 'ai' ? 'AI' : '我' }}</span>
+  <div class="chat-container">
+    <div class="chat-header">
+      <button class="back-btn" @click="goHome">← 返回</button>
+      <h2>AI 超级智能体</h2>
+      <div class="chat-id">会话ID: {{ chatId }}</div>
+    </div>
+    <div class="chat-messages" ref="messagesContainer">
+      <div 
+        v-for="(msg, index) in messages" 
+        :key="index"
+        :class="['message', msg.type]"
+      >
+        <div class="message-content">
+          <div :class="['message-avatar', msg.type]">
+            <span v-if="msg.type === 'user'">👤</span>
+            <div v-else class="ai-avatar-manus">🤖</div>
           </div>
           <div class="message-bubble">
-            <div class="message-text">{{ message.content }}</div>
-            <div class="message-time">{{ message.time }}</div>
-          </div>
-        </div>
-
-        <div v-if="isLoading" class="message-row ai typing-row">
-          <div class="avatar avatar--ai-manus">
-            <span>AI</span>
-          </div>
-          <div class="message-bubble">
-            <div class="message-text typing">正在执行多步任务...</div>
+            <div class="message-text" v-html="formatMessage(msg.content)"></div>
+            <div class="message-time">{{ msg.time }}</div>
           </div>
         </div>
       </div>
-
-      <div class="chat-input">
+      <div v-if="isLoading && !currentStreamingContent" class="message ai">
+        <div class="message-content">
+          <div class="message-avatar ai">
+            <div class="ai-avatar-manus">🤖</div>
+          </div>
+          <div class="message-bubble">
+            <div class="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-container">
+      <div class="input-wrapper">
         <textarea
           v-model="inputMessage"
-          @keyup.enter.exact.prevent="sendMessage"
-          placeholder="输入需要执行的任务，Enter 发送"
-          rows="2"
-          :disabled="isLoading"
-        />
-        <button
-          class="send-btn"
-          @click="sendMessage"
+          @keydown.enter.exact.prevent="sendMessage"
+          @keydown.shift.enter.exact="inputMessage += '\n'"
+          placeholder="输入您的消息..."
+          class="chat-input"
+          rows="1"
+          ref="inputRef"
+        ></textarea>
+        <button 
+          @click="sendMessage" 
           :disabled="!inputMessage.trim() || isLoading"
+          class="send-btn"
         >
           发送
         </button>
       </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup>
-import { ref, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { chatWithManus } from '../api/chat'
 
 const router = useRouter()
 const messages = ref([])
 const inputMessage = ref('')
 const isLoading = ref(false)
+const chatId = ref('')
 const messagesContainer = ref(null)
+const inputRef = ref(null)
+const currentStreamingContent = ref('') // 当前正在流式接收的消息内容
 let eventSource = null
+let currentAiMessageIndex = null // 当前正在接收消息的索引
+let isStreamCompleted = false // 标记流是否已完成，防止重复处理
+
+// 生成聊天室ID
+const generateChatId = () => {
+  return 'manus_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+}
+
+// 格式化消息（支持换行）
+const formatMessage = (text) => {
+  return text.replace(/\n/g, '<br>')
+}
 
 // 获取当前时间
 const getCurrentTime = () => {
@@ -96,92 +104,139 @@ const scrollToBottom = () => {
 
 // 发送消息
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || isLoading.value) return
+  const message = inputMessage.value.trim()
+  if (!message || isLoading.value) return
 
-  const userMessage = {
+  // 添加用户消息
+  messages.value.push({
     type: 'user',
-    content: inputMessage.value,
+    content: message,
     time: getCurrentTime()
-  }
-  messages.value.push(userMessage)
-  const messageToSend = inputMessage.value
+  })
+
   inputMessage.value = ''
+  isLoading.value = true
+  currentStreamingContent.value = '' // 重置流式内容
+  isStreamCompleted = false // 重置完成标记
   scrollToBottom()
 
-  isLoading.value = true
-  let aiMessageContent = ''
-  let aiMessageIndex = -1
+  // 初始化AI消息（空的，用于接收流式数据）
+  currentAiMessageIndex = messages.value.length
+  messages.value.push({
+    type: 'ai',
+    content: '',
+    time: getCurrentTime()
+  })
 
   try {
-    const url = `http://localhost:8123/api/ai/manus/chat?message=${encodeURIComponent(messageToSend)}`
-    eventSource = new EventSource(url)
-
-    eventSource.onmessage = (event) => {
-      const chunk = event.data ? `${event.data}\n\n` : '\n'
-      if (aiMessageIndex === -1) {
-        aiMessageContent = chunk
-        aiMessageIndex = messages.value.length
-        messages.value.push({
-          type: 'ai',
-          content: aiMessageContent,
-          time: getCurrentTime()
-        })
-      } else {
-        aiMessageContent += chunk
-        messages.value[aiMessageIndex].content = aiMessageContent
-      }
-      scrollToBottom()
+    // 关闭之前的连接
+    if (eventSource) {
+      eventSource.close()
+      eventSource = null
     }
 
+    // 创建SSE连接
+    eventSource = chatWithManus(message)
+
+    // 监听连接打开
     eventSource.onopen = () => {
-      console.log('SSE连接已打开')
+      console.log('SSE连接已建立')
     }
 
-    eventSource.onerror = (error) => {
-      console.log('SSE onerror触发, readyState:', eventSource.readyState)
-
-      // 如果已经收到过 AI 返回内容（aiMessageIndex !== -1），
-      // 那么大概率是任务完成或正常结束后的连接关闭，不再显示“连接失败”的错误。
-      if (aiMessageIndex !== -1) {
-        console.log('SSE连接结束（任务已产生输出，视为正常结束）')
-        isLoading.value = false
-        if (eventSource) {
-          eventSource.close()
-          eventSource = null
-        }
+    // 监听消息接收（流式数据）
+    eventSource.onmessage = (event) => {
+      // 检查是否已经完成，防止重复处理
+      if (isStreamCompleted) {
         return
       }
 
-      if (eventSource.readyState === EventSource.CLOSED) {
-        console.log('SSE连接正常关闭')
+      // 检查是否收到结束标记（空数据或特定标记）
+      if (!event.data || event.data.trim() === '' || event.data === '[DONE]') {
+        // 任务完成，立即关闭连接
+        isStreamCompleted = true
         isLoading.value = false
-        eventSource = null
-      } else if (eventSource.readyState === EventSource.CONNECTING) {
-        // 只有在“尚未收到任何任务输出”的情况下，才认为是真正的连接失败
-        console.error('SSE连接失败:', error)
-        isLoading.value = false
-        messages.value.push({
-          type: 'ai',
-          content: '连接失败，请稍后再试。',
-          time: getCurrentTime()
-        })
-        scrollToBottom()
+        
         if (eventSource) {
           eventSource.close()
           eventSource = null
         }
-      } else {
-        console.error('SSE其他错误:', error)
+        
+        console.log('SSE流式消息接收完成（收到结束标记）')
+        return
+      }
+
+      // 持续拼接消息内容（打字机效果）
+      // 后端每完成一步响应一次，所以每次接收后添加换行
+      currentStreamingContent.value += event.data + '\n'
+      
+      // 更新消息列表中的内容
+      if (messages.value[currentAiMessageIndex]) {
+        messages.value[currentAiMessageIndex].content = currentStreamingContent.value
+      }
+      
+      // 每次接收到数据时自动滚动到底部，实现打字机效果
+      scrollToBottom()
+    }
+
+    // 监听错误和连接关闭
+    eventSource.onerror = (error) => {
+      // 如果已经完成，直接返回，防止重复处理
+      if (isStreamCompleted) {
+        return
+      }
+
+      // 检查连接状态
+      if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+        // 标记为已完成，防止自动重试
+        isStreamCompleted = true
+        
+        // 连接已关闭（可能是正常结束或错误）
+        const hasContent = currentStreamingContent.value.trim().length > 0
+        
+        if (hasContent) {
+          // 有内容，说明是正常结束
+          console.log('SSE流式消息接收完成')
+        } else {
+          // 无内容，可能是错误
+          console.warn('SSE连接关闭，但没有接收到内容')
+          if (messages.value[currentAiMessageIndex]) {
+            messages.value[currentAiMessageIndex].content = '抱歉，未接收到响应，请稍后重试。'
+          }
+        }
+        
+        // 清理状态
         isLoading.value = false
+        currentStreamingContent.value = ''
+        currentAiMessageIndex = null
+        
+        // 确保连接已关闭
+        if (eventSource) {
+          eventSource.close()
+          eventSource = null
+        }
+      } else if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+        // 如果正在重连，立即关闭，防止自动重试
+        console.log('检测到SSE自动重连，立即关闭连接')
+        isStreamCompleted = true
+        isLoading.value = false
+        
         if (eventSource) {
           eventSource.close()
           eventSource = null
         }
       }
     }
+
   } catch (error) {
-    console.error('发送消息错误:', error)
+    console.error('发送消息失败:', error)
+    isStreamCompleted = true // 标记为已完成，防止重试
     isLoading.value = false
+    const errorIndex = currentAiMessageIndex
+    currentStreamingContent.value = ''
+    currentAiMessageIndex = null
+    if (errorIndex !== null && messages.value[errorIndex]) {
+      messages.value[errorIndex].content = '发送消息失败，请稍后重试。'
+    }
     if (eventSource) {
       eventSource.close()
       eventSource = null
@@ -190,302 +245,136 @@ const sendMessage = async () => {
 }
 
 // 返回主页
-const goBack = () => {
+const goHome = () => {
+  isStreamCompleted = true // 标记为已完成，防止重试
   if (eventSource) {
     eventSource.close()
     eventSource = null
   }
+  isLoading.value = false
+  currentStreamingContent.value = ''
+  currentAiMessageIndex = null
   router.push('/')
 }
 
+onMounted(() => {
+  chatId.value = generateChatId()
+  // 自动聚焦输入框
+  if (inputRef.value) {
+    inputRef.value.focus()
+  }
+})
+
 onUnmounted(() => {
+  isStreamCompleted = true // 标记为已完成，防止重试
   if (eventSource) {
     eventSource.close()
     eventSource = null
   }
+  isLoading.value = false
+  currentStreamingContent.value = ''
+  currentAiMessageIndex = null
 })
 </script>
 
 <style scoped>
-.chat-view {
-  min-height: 100vh;
+.chat-container {
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: clamp(1.5rem, 3vw, 2.5rem);
-  gap: 1.5rem;
+  background: var(--gradient-manus);
   position: relative;
   overflow: hidden;
 }
 
-.chat-view::before {
+.chat-container::before {
   content: '';
   position: absolute;
-  width: 520px;
-  height: 520px;
-  border-radius: 50%;
-  background: rgba(145, 189, 255, 0.35);
-  filter: blur(70px);
-  left: -120px;
-  top: -150px;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 20% 50%, rgba(255, 236, 210, 0.3) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(252, 182, 159, 0.3) 0%, transparent 50%);
+  pointer-events: none;
   z-index: 0;
 }
 
-.chat-view::after {
-  content: '';
-  position: absolute;
-  width: 520px;
-  height: 520px;
-  border-radius: 50%;
-  background: rgba(153, 255, 241, 0.3);
-  filter: blur(80px);
-  right: -140px;
-  bottom: -160px;
-  z-index: 0;
-}
-
-.chat-view__header {
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 28px;
-  padding: clamp(1rem, 2vw, 1.9rem);
+.chat-header {
+  background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  color: #333;
+  padding: 18px 25px;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  border: 1px solid rgba(188, 205, 255, 0.6);
-  box-shadow: 0 25px 60px rgba(125, 154, 255, 0.25);
+  box-shadow: var(--shadow-medium);
   position: relative;
-  z-index: 1;
-}
-
-.chat-view__title {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.chat-view__label {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.chat-view__title h2 {
-  margin-top: 0.35rem;
+  z-index: 10;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .back-btn {
-  border: none;
-  background: rgba(139, 173, 255, 0.2);
-  color: #4a6fff;
-  padding: 0.55rem 1rem;
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  color: #333;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
   cursor: pointer;
-  font-size: 0.95rem;
-  box-shadow: inset 0 0 0 1px rgba(84, 129, 255, 0.2);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
-.chat-view__meta {
-  display: flex;
-  align-items: center;
-}
-
-.ai-profile {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.85rem 1.1rem;
-  border-radius: 18px;
-}
-
-.ai-profile--manus {
-  background: rgba(188, 205, 255, 0.25);
-  box-shadow: inset 0 0 0 1px rgba(111, 154, 255, 0.25);
-}
-
-.ai-profile__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 1.6rem;
+.back-btn:hover {
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 15px 35px rgba(115, 151, 255, 0.35);
+  transform: translateX(-3px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
 }
 
-.ai-profile__name {
-  font-weight: 600;
+.chat-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  flex: 1;
+  text-align: center;
+  text-shadow: 1px 1px 5px rgba(255, 255, 255, 0.5);
+  letter-spacing: 1px;
+  color: #5a4a42;
 }
 
-.chat-panel {
-  background: rgba(255, 255, 255, 0.92);
-  border-radius: 36px;
-  padding: clamp(1rem, 2vw, 1.6rem);
-  border: 1px solid rgba(188, 205, 255, 0.45);
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 220px);
-  max-height: 920px;
-  min-height: 480px;
-  box-shadow: 0 45px 90px rgba(120, 149, 255, 0.25);
-  position: relative;
-  z-index: 1;
+.chat-id {
+  font-size: 11px;
+  opacity: 0.7;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(5px);
+  color: #5a4a42;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding-right: 0.5rem;
+  padding: 25px 20px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 20px;
+  position: relative;
+  z-index: 1;
 }
 
-.message-row {
+.message {
   display: flex;
-  gap: 0.85rem;
-  max-width: 85%;
-  animation: fadeIn 0.35s ease;
-}
-
-.message-row.user {
-  margin-left: auto;
-  flex-direction: row-reverse;
-}
-
-.avatar {
-  width: 46px;
-  height: 46px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #fff;
-}
-
-.avatar--ai-manus {
-  background: linear-gradient(145deg, #7ecbff, #5a8bff);
-  box-shadow: 0 18px 35px rgba(122, 168, 255, 0.35);
-}
-
-.avatar--user {
-  background: linear-gradient(145deg, #ffc778, #ff9f7e);
-  box-shadow: 0 18px 35px rgba(255, 159, 128, 0.35);
-}
-
-.message-bubble {
-  background: #ffffff;
-  border-radius: 20px;
-  padding: 1rem 1.15rem 0.7rem;
-  box-shadow: 0 15px 40px rgba(124, 156, 255, 0.2);
-  border: 1px solid rgba(124, 156, 255, 0.2);
   width: 100%;
-  position: relative;
+  animation: fadeInMessage 0.3s ease-out;
 }
 
-.message-row.user .message-bubble {
-  background: linear-gradient(135deg, #8f8bff, #7db9ff);
-  color: #fff;
-  border: none;
-  box-shadow: 0 18px 45px rgba(127, 158, 255, 0.35);
-}
-
-.message-text {
-  font-size: 0.98rem;
-  line-height: 1.65;
-  text-align: left;
-  white-space: pre-wrap;
-}
-
-.message-row.user .message-text {
-  text-align: right;
-}
-
-.message-time {
-  font-size: 0.75rem;
-  opacity: 0.65;
-  margin-top: 0.35rem;
-  text-align: right;
-}
-
-.message-row.ai .message-time {
-  text-align: left;
-}
-
-.typing-row .message-bubble {
-  background: rgba(137, 176, 255, 0.2);
-  border-style: dashed;
-}
-
-.typing {
-  position: relative;
-  padding-right: 1.6rem;
-}
-
-.typing::after {
-  content: '...';
-  position: absolute;
-  right: 0.2rem;
-  animation: dots 1.2s steps(4, end) infinite;
-}
-
-.chat-input {
-  margin-top: 1rem;
-  display: flex;
-  gap: 0.75rem;
-  align-items: flex-end;
-}
-
-.chat-input textarea {
-  flex: 1;
-  resize: none;
-  border: 1px solid rgba(120, 158, 255, 0.45);
-  border-radius: 20px;
-  padding: 1.1rem 1.3rem;
-  font-size: 1rem;
-  line-height: 1.7;
-  min-height: 56px;
-  max-height: 180px;
-  box-shadow: inset 0 2px 10px rgba(120, 158, 255, 0.2);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.chat-input textarea:focus {
-  outline: 2px solid rgba(120, 158, 255, 0.65);
-}
-
-.chat-input textarea:disabled {
-  background: #f7f7fb;
-}
-
-.send-btn {
-  border: none;
-  border-radius: 18px;
-  padding: 1rem 2.1rem;
-  background: linear-gradient(135deg, #7db9ff, #5a8bff);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
-  box-shadow: 0 18px 40px rgba(125, 185, 255, 0.35);
-}
-
-.send-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-@keyframes fadeIn {
+@keyframes fadeInMessage {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -493,60 +382,357 @@ onUnmounted(() => {
   }
 }
 
-@keyframes dots {
-  0%, 20% {
-    content: '.';
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.ai {
+  justify-content: flex-start;
+}
+
+.message-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 75%;
+}
+
+.message.user .message-content {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-soft);
+  border: 3px solid rgba(255, 255, 255, 0.8);
+  transition: transform 0.3s;
+}
+
+.message-avatar:hover {
+  transform: scale(1.1);
+}
+
+.message-avatar.user {
+  background: linear-gradient(135deg, #fcb69f 0%, #ffecd2 100%);
+}
+
+.message-avatar.ai {
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+}
+
+.ai-avatar-manus {
+  font-size: 28px;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.1));
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
   }
-  40% {
-    content: '..';
-  }
-  60%, 100% {
-    content: '...';
+  50% {
+    transform: scale(1.05);
   }
 }
 
-@media (max-width: 1024px) {
-  .chat-panel {
-    height: calc(100vh - 180px);
+.message-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: var(--radius-medium);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.message.user .message-bubble {
+  background: linear-gradient(135deg, #fcb69f 0%, #ffecd2 100%);
+  color: #5a4a42;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.message.ai .message-bubble {
+  background: rgba(255, 255, 255, 0.95);
+  color: #333;
+}
+
+.message-text {
+  word-wrap: break-word;
+  line-height: 1.8;
+  font-size: 15px;
+  font-weight: 400;
+  white-space: pre-line; /* 保留换行符 */
+}
+
+.message.user .message-text {
+  color: #5a4a42;
+}
+
+.message.ai .message-text {
+  color: #333;
+}
+
+.message-time {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 8px;
+  font-weight: 300;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 6px;
+  padding: 5px 0;
+  align-items: center;
+}
+
+.typing-indicator span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fcb69f 0%, #ffecd2 100%);
+  animation: typing 1.4s infinite;
+  box-shadow: 0 2px 5px rgba(252, 182, 159, 0.3);
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.7;
+  }
+  30% {
+    transform: translateY(-12px) scale(1.1);
+    opacity: 1;
   }
 }
 
+.chat-input-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 18px 25px;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 10;
+}
+
+.input-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.chat-input {
+  flex: 1;
+  border: 2px solid rgba(252, 182, 159, 0.3);
+  border-radius: var(--radius-large);
+  padding: 14px 18px;
+  font-size: 15px;
+  resize: none;
+  max-height: 120px;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.3s;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.chat-input:focus {
+  border-color: #fcb69f;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(252, 182, 159, 0.1), inset 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.chat-input::placeholder {
+  color: #999;
+}
+
+.send-btn {
+  background: linear-gradient(135deg, #fcb69f 0%, #ffecd2 100%);
+  color: #5a4a42;
+  border: none;
+  border-radius: var(--radius-large);
+  padding: 14px 35px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  white-space: nowrap;
+  box-shadow: var(--shadow-soft);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-medium);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.send-btn:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+/* 平板适配 */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .message-content {
+    max-width: 80%;
+  }
+  
+  .chat-header {
+    padding: 16px 22px;
+  }
+  
+  .chat-header h2 {
+    font-size: 20px;
+  }
+  
+  .chat-messages {
+    padding: 22px 18px;
+  }
+}
+
+/* 手机适配 */
 @media (max-width: 768px) {
-  .chat-view {
-    padding: 1rem;
+  .message-content {
+    max-width: 85%;
   }
-
-  .chat-view__header {
-    border-radius: 18px;
+  
+  .chat-header {
+    padding: 14px 18px;
   }
-
-  .chat-panel {
-    border-radius: 24px;
-    padding: 1rem;
+  
+  .chat-header h2 {
+    font-size: 18px;
   }
-
-  .message-row {
-    max-width: 100%;
+  
+  .chat-id {
+    display: none;
+  }
+  
+  .chat-messages {
+    padding: 20px 15px;
+    gap: 16px;
+  }
+  
+  .message-avatar {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+  
+  .ai-avatar-manus {
+    font-size: 24px;
+  }
+  
+  .message-bubble {
+    padding: 12px 16px;
+  }
+  
+  .message-text {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  
+  .chat-input-container {
+    padding: 15px 18px;
+  }
+  
+  .chat-input {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+  
+  .send-btn {
+    padding: 12px 25px;
+    font-size: 14px;
   }
 }
 
-@media (max-width: 520px) {
-  .chat-view__title {
-    flex-direction: column;
-    align-items: flex-start;
+/* 小屏手机 */
+@media (max-width: 480px) {
+  .chat-header {
+    padding: 12px 15px;
   }
-
-  .ai-profile {
-    width: 100%;
-    justify-content: flex-start;
+  
+  .chat-header h2 {
+    font-size: 16px;
   }
-
+  
+  .back-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  
+  .message-content {
+    max-width: 90%;
+  }
+  
+  .message-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+  }
+  
+  .ai-avatar-manus {
+    font-size: 22px;
+  }
+  
+  .message-bubble {
+    padding: 10px 14px;
+    border-radius: var(--radius-small);
+  }
+  
+  .message-text {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  
+  .chat-messages {
+    padding: 15px 12px;
+    gap: 14px;
+  }
+  
+  .chat-input-container {
+    padding: 12px 15px;
+  }
+  
+  .input-wrapper {
+    gap: 10px;
+  }
+  
   .chat-input {
-    flex-direction: column;
+    padding: 10px 14px;
+    font-size: 13px;
   }
-
+  
   .send-btn {
-    width: 100%;
+    padding: 10px 20px;
+    font-size: 13px;
   }
 }
 </style>
